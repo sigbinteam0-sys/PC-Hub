@@ -2,6 +2,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 from PIL import Image
 from datetime import datetime
+import os
 
 from frontend.inventory import Inventory
 
@@ -549,6 +550,70 @@ class Dashboard:
         self.sales_history_frame = None
 
         self.create_dashboard()
+
+    # ==========================================================
+    # IMAGE PATH
+    # ==========================================================
+
+    def get_product_image_path(self, image_path):
+
+        if not image_path:
+            return None
+
+        # ------------------------------------------------------
+        # 1. If image path is already absolute and exists
+        # ------------------------------------------------------
+
+        if os.path.isabs(image_path):
+
+            if os.path.exists(image_path):
+                return image_path
+
+        # ------------------------------------------------------
+        # 2. Try path exactly as provided
+        # ------------------------------------------------------
+
+        if os.path.exists(image_path):
+            return os.path.abspath(image_path)
+
+        # ------------------------------------------------------
+        # 3. Project folder
+        # ------------------------------------------------------
+
+        project_folder = os.path.dirname(
+            os.path.dirname(
+                os.path.abspath(__file__)
+            )
+        )
+
+        project_path = os.path.join(
+            project_folder,
+            image_path
+        )
+
+        if os.path.exists(project_path):
+            return project_path
+
+        # ------------------------------------------------------
+        # 4. frontend/images
+        # ------------------------------------------------------
+
+        filename = os.path.basename(
+            image_path
+        )
+
+        frontend_images = os.path.join(
+            os.path.dirname(
+                os.path.abspath(__file__)
+            ),
+            "images",
+            filename
+        )
+
+        if os.path.exists(frontend_images):
+            return frontend_images
+
+        return None
 
     # ==========================================================
     # DASHBOARD
@@ -1220,6 +1285,14 @@ class Dashboard:
                 or product.get("picture_path")
             )
 
+            # --------------------------------------------------
+            # FIX IMAGE PATH
+            # --------------------------------------------------
+
+            image_path = self.get_product_image_path(
+                image_path
+            )
+
             product_image = None
 
             if image_path:
@@ -1230,13 +1303,27 @@ class Dashboard:
                         image_path
                     )
 
+                    original_image.load()
+
                     product_image = ctk.CTkImage(
                         light_image=original_image,
                         dark_image=original_image,
                         size=(180, 105)
                     )
 
-                except Exception:
+                    print(
+                        f"Product image loaded: {image_path}"
+                    )
+
+                except Exception as error:
+
+                    print(
+                        f"Could not load image: {image_path}"
+                    )
+
+                    print(
+                        f"Image error: {error}"
+                    )
 
                     product_image = None
 
@@ -1685,10 +1772,6 @@ class Dashboard:
         for widget in self.page_frame.winfo_children():
             widget.destroy()
 
-        # ======================================================
-        # ACTIVE NAVIGATION
-        # ======================================================
-
         self.products_nav.configure(
             fg_color=self.WHITE,
             text_color=self.DARK
@@ -1704,10 +1787,6 @@ class Dashboard:
             text_color=self.WHITE
         )
 
-        # ======================================================
-        # SALES PAGE
-        # ======================================================
-
         sales_frame = ctk.CTkFrame(
             self.page_frame,
             fg_color=self.BG,
@@ -1718,10 +1797,6 @@ class Dashboard:
             fill="both",
             expand=True
         )
-
-        # ======================================================
-        # MAIN SALES CONTAINER
-        # ======================================================
 
         sales_container = ctk.CTkFrame(
             sales_frame,
@@ -1737,10 +1812,6 @@ class Dashboard:
             padx=20,
             pady=20
         )
-
-        # ======================================================
-        # SUMMARY
-        # ======================================================
 
         summary_frame = ctk.CTkFrame(
             sales_container,
@@ -1918,7 +1989,7 @@ class Dashboard:
         )
 
         # ======================================================
-        # TRANSACTION HISTORY HEADER
+        # HISTORY HEADER
         # ======================================================
 
         history_header = ctk.CTkFrame(
@@ -1962,7 +2033,7 @@ class Dashboard:
         )
 
         # ======================================================
-        # TRANSACTION HISTORY
+        # HISTORY
         # ======================================================
 
         self.sales_history_frame = ctk.CTkScrollableFrame(
@@ -1978,10 +2049,6 @@ class Dashboard:
             pady=(0, 20)
         )
 
-        # ======================================================
-        # LOAD SALES
-        # ======================================================
-
         self.refresh_sales_page()
 
     # ==========================================================
@@ -1995,10 +2062,6 @@ class Dashboard:
         today = now.date()
         current_year = now.year
         current_month = now.month
-
-        # ======================================================
-        # TODAY'S SALES
-        # ======================================================
 
         today_records = [
             record
@@ -2014,10 +2077,6 @@ class Dashboard:
         today_transactions = len(
             today_records
         )
-
-        # ======================================================
-        # MONTH'S SALES
-        # ======================================================
 
         month_records = [
             record
@@ -2037,10 +2096,6 @@ class Dashboard:
             month_records
         )
 
-        # ======================================================
-        # UPDATE TODAY
-        # ======================================================
-
         if (
             self.today_sales_amount_label is not None
             and self.today_sales_amount_label.winfo_exists()
@@ -2058,10 +2113,6 @@ class Dashboard:
             self.today_transactions_label.configure(
                 text=f"Transactions: {today_transactions}"
             )
-
-        # ======================================================
-        # UPDATE MONTH
-        # ======================================================
 
         if (
             self.month_sales_amount_label is not None
@@ -2081,26 +2132,14 @@ class Dashboard:
                 text=f"Transactions: {month_transactions}"
             )
 
-        # ======================================================
-        # CHECK HISTORY FRAME
-        # ======================================================
-
         if self.sales_history_frame is None:
             return
 
         if not self.sales_history_frame.winfo_exists():
             return
 
-        # ======================================================
-        # CLEAR OLD HISTORY
-        # ======================================================
-
         for widget in self.sales_history_frame.winfo_children():
             widget.destroy()
-
-        # ======================================================
-        # NO TRANSACTIONS
-        # ======================================================
 
         if len(self.sales_records) == 0:
 
@@ -2118,10 +2157,6 @@ class Dashboard:
 
             return
 
-        # ======================================================
-        # NEWEST TRANSACTION FIRST
-        # ======================================================
-
         records = list(
             reversed(self.sales_records)
         )
@@ -2130,10 +2165,6 @@ class Dashboard:
             records,
             start=1
         ):
-
-            # ==================================================
-            # TRANSACTION CARD
-            # ==================================================
 
             transaction_frame = ctk.CTkFrame(
                 self.sales_history_frame,
@@ -2147,10 +2178,6 @@ class Dashboard:
                 fill="x",
                 pady=5
             )
-
-            # ==================================================
-            # TRANSACTION HEADER
-            # ==================================================
 
             header = ctk.CTkFrame(
                 transaction_frame,
@@ -2193,10 +2220,6 @@ class Dashboard:
             ).pack(
                 side="right"
             )
-
-            # ==================================================
-            # ITEMS
-            # ==================================================
 
             items_frame = ctk.CTkFrame(
                 transaction_frame,
@@ -2253,10 +2276,6 @@ class Dashboard:
                     side="right"
                 )
 
-            # ==================================================
-            # PAYMENT INFORMATION
-            # ==================================================
-
             payment_info = ctk.CTkFrame(
                 transaction_frame,
                 fg_color="transparent"
@@ -2267,10 +2286,6 @@ class Dashboard:
                 padx=15,
                 pady=(5, 12)
             )
-
-            # ==================================================
-            # TOTAL
-            # ==================================================
 
             total_frame = ctk.CTkFrame(
                 payment_info,
@@ -2307,10 +2322,6 @@ class Dashboard:
                 anchor="w"
             )
 
-            # ==================================================
-            # CASH RECEIVED
-            # ==================================================
-
             cash_frame = ctk.CTkFrame(
                 payment_info,
                 fg_color="transparent"
@@ -2345,10 +2356,6 @@ class Dashboard:
             ).pack(
                 anchor="w"
             )
-
-            # ==================================================
-            # CHANGE
-            # ==================================================
 
             change_frame = ctk.CTkFrame(
                 payment_info,
@@ -2405,10 +2412,6 @@ class Dashboard:
             "change": change
         }
 
-        # ======================================================
-        # SAVE EACH ITEM
-        # ======================================================
-
         for item in cart_items:
 
             product = item["product"]
@@ -2423,10 +2426,6 @@ class Dashboard:
         self.sales_records.append(
             sale_record
         )
-
-        # ======================================================
-        # REFRESH SALES
-        # ======================================================
 
         self.refresh_sales_page()
 
@@ -2479,10 +2478,6 @@ class Dashboard:
 
         self.cart_window.grab_set()
 
-        # ======================================================
-        # HEADER
-        # ======================================================
-
         header = ctk.CTkFrame(
             self.cart_window,
             height=70,
@@ -2523,10 +2518,6 @@ class Dashboard:
             padx=25
         )
 
-        # ======================================================
-        # CART ITEMS
-        # ======================================================
-
         self.cart_items_frame = ctk.CTkScrollableFrame(
             self.cart_window,
             fg_color="transparent"
@@ -2538,10 +2529,6 @@ class Dashboard:
             padx=15,
             pady=15
         )
-
-        # ======================================================
-        # FOOTER
-        # ======================================================
 
         footer = ctk.CTkFrame(
             self.cart_window,
@@ -2910,10 +2897,6 @@ class Dashboard:
 
         payment.grab_set()
 
-        # ======================================================
-        # HEADER
-        # ======================================================
-
         header = ctk.CTkFrame(
             payment,
             height=75,
@@ -2940,10 +2923,6 @@ class Dashboard:
         ).pack(
             expand=True
         )
-
-        # ======================================================
-        # SUMMARY
-        # ======================================================
 
         summary = ctk.CTkFrame(
             payment,
@@ -2999,10 +2978,6 @@ class Dashboard:
             pady=(10, 15)
         )
 
-        # ======================================================
-        # CASH
-        # ======================================================
-
         ctk.CTkLabel(
             payment,
             text="Cash Received",
@@ -3031,10 +3006,6 @@ class Dashboard:
             pady=(6, 15)
         )
 
-        # ======================================================
-        # CHANGE
-        # ======================================================
-
         change_label = ctk.CTkLabel(
             payment,
             text="Change: ₱0.00",
@@ -3048,10 +3019,6 @@ class Dashboard:
         change_label.pack(
             pady=(0, 18)
         )
-
-        # ======================================================
-        # CALCULATE CHANGE
-        # ======================================================
 
         def calculate_change(event=None):
 
@@ -3106,10 +3073,6 @@ class Dashboard:
             calculate_change
         )
 
-        # ======================================================
-        # CONFIRM PAYMENT
-        # ======================================================
-
         def confirm_payment():
 
             value = cash_entry.get().strip()
@@ -3160,20 +3123,12 @@ class Dashboard:
             if not answer:
                 return
 
-            # ==================================================
-            # RECORD SALE
-            # ==================================================
-
             self.record_sale(
                 cart_items=cart_items,
                 total=total,
                 cash=cash,
                 change=change
             )
-
-            # ==================================================
-            # CLEAR CART
-            # ==================================================
 
             if clear_cart_after_payment:
 
@@ -3190,10 +3145,6 @@ class Dashboard:
 
                     self.cart_window = None
 
-            # ==================================================
-            # SUCCESS
-            # ==================================================
-
             messagebox.showinfo(
                 "Payment Successful",
                 f"Payment completed successfully!\n\n"
@@ -3204,10 +3155,6 @@ class Dashboard:
             )
 
             payment.destroy()
-
-        # ======================================================
-        # CONFIRM BUTTON
-        # ======================================================
 
         ctk.CTkButton(
             payment,
@@ -3226,10 +3173,6 @@ class Dashboard:
             padx=25,
             pady=(0, 8)
         )
-
-        # ======================================================
-        # CANCEL BUTTON
-        # ======================================================
 
         ctk.CTkButton(
             payment,
