@@ -1,559 +1,329 @@
-import customtkinter as ctk
-from tkinter import messagebox
+"""Sales management and analytics view for Aztech POS.
+
+Provides full analytics, metric cards, and transaction history breakdown.
+"""
 from datetime import datetime
+from typing import List, Dict, Any, Optional
+import customtkinter as ctk
+
+from frontend.theme import Theme
 
 
-class Sales(ctk.CTkFrame):
+class SalesView(ctk.CTkFrame):
+    """Encapsulates the Sales dashboard with metric cards and full transaction breakdown."""
 
-    # ==========================================================
-    # COLORS - PC HUB DESIGN
-    # ==========================================================
-
-    BLUE = "#1769D1"
-    DARK_BLUE = "#0F4FA8"
-    LIGHT_BLUE = "#EAF3FF"
-
-    WHITE = "#FFFFFF"
-    BG = "#F4F7FB"
-
-    DARK = "#172033"
-    GRAY = "#667085"
-    BORDER = "#D6E0ED"
-
-    RED = "#D66D70"
-
-    # ==========================================================
-    # INIT
-    # ==========================================================
-
-    def __init__(self, parent, sales_data=None):
-
-        super().__init__(
-            parent,
-            fg_color=self.BG,
-            corner_radius=0
-        )
-
+    def __init__(self, parent, sales_data: Optional[List[Any]] = None):
+        super().__init__(parent, fg_color=Theme.BG, corner_radius=0)
         self.parent = parent
-
-        # If your dashboard already has sales data,
-        # it can be passed here.
         self.sales_data = sales_data if sales_data is not None else []
 
-        self.create_sales()
+        # Pack immediately into parent
+        self.pack(fill="both", expand=True)
 
-    # ==========================================================
-    # SALES UI
-    # ==========================================================
+        self._build_ui()
+        self.refresh_sales()
 
-    def create_sales(self):
+    def _build_ui(self):
+        # Main Outer Container
+        main = ctk.CTkFrame(self, fg_color=Theme.BG, corner_radius=0)
+        main.pack(fill="both", expand=True, padx=16, pady=16)
 
-        # ======================================================
-        # MAIN CONTAINER
-        # ======================================================
-
-        main = ctk.CTkFrame(
-            self,
-            fg_color=self.BG,
-            corner_radius=0
-        )
-
-        main.pack(
-            fill="both",
-            expand=True,
-            padx=20,
-            pady=20
-        )
-
-        # ======================================================
-        # PAGE TITLE
-        # ======================================================
-
-        title_frame = ctk.CTkFrame(
+        # White Container Panel
+        sales_container = ctk.CTkFrame(
             main,
-            fg_color="transparent"
-        )
-
-        title_frame.pack(
-            fill="x",
-            pady=(0, 15)
-        )
-
-        ctk.CTkLabel(
-            title_frame,
-            text="Sales",
-            font=ctk.CTkFont(
-                size=24,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            side="left"
-        )
-
-        # ======================================================
-        # MAIN SALES PANEL
-        # ======================================================
-
-        sales_panel = ctk.CTkFrame(
-            main,
-            fg_color=self.WHITE,
+            fg_color=Theme.CARD_BG,
             corner_radius=12,
             border_width=1,
-            border_color=self.BORDER
+            border_color=Theme.BORDER
         )
-
-        sales_panel.pack(
-            fill="both",
-            expand=True
-        )
+        sales_container.pack(fill="both", expand=True)
 
         # ======================================================
-        # SALES PANEL HEADER
+        # TOP SUMMARY METRICS (TODAY & THIS MONTH)
         # ======================================================
+        summary_frame = ctk.CTkFrame(sales_container, fg_color="transparent")
+        summary_frame.pack(fill="x", padx=20, pady=(20, 10))
+        summary_frame.grid_columnconfigure(0, weight=1)
+        summary_frame.grid_columnconfigure(1, weight=1)
 
-        panel_header = ctk.CTkFrame(
-            sales_panel,
-            fg_color=self.BLUE,
-            height=55,
-            corner_radius=10
-        )
-
-        panel_header.pack(
-            fill="x",
-            padx=8,
-            pady=8
-        )
-
-        panel_header.pack_propagate(False)
-
-        ctk.CTkLabel(
-            panel_header,
-            text="Sales Overview",
-            font=ctk.CTkFont(
-                size=16,
-                weight="bold"
-            ),
-            text_color=self.WHITE
-        ).pack(
-            side="left",
-            padx=20
-        )
-
-        # ======================================================
-        # TWO SALES SECTIONS
-        # ======================================================
-
-        sections = ctk.CTkFrame(
-            sales_panel,
-            fg_color="transparent"
-        )
-
-        sections.pack(
-            fill="both",
-            expand=True,
-            padx=20,
-            pady=20
-        )
-
-        sections.grid_columnconfigure(
-            0,
-            weight=1
-        )
-
-        sections.grid_columnconfigure(
-            1,
-            weight=1
-        )
-
-        sections.grid_rowconfigure(
-            0,
-            weight=1
-        )
-
-        # ======================================================
-        # SALES FOR THIS DAY
-        # ======================================================
-
+        # 1. Today Frame
         today_frame = ctk.CTkFrame(
-            sections,
-            fg_color=self.WHITE,
+            summary_frame,
+            fg_color=Theme.WHITE,
             corner_radius=10,
             border_width=2,
-            border_color=self.BLUE
+            border_color=Theme.PRIMARY
         )
-
-        today_frame.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-            padx=(0, 10)
-        )
-
-        # ------------------------------------------------------
-        # TITLE
-        # ------------------------------------------------------
+        today_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
 
         ctk.CTkLabel(
             today_frame,
             text="Sales for this day",
-            font=ctk.CTkFont(
-                size=20,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=25,
-            pady=(25, 15)
-        )
+            font=Theme.font(18, "bold"),
+            text_color=Theme.DARK
+        ).pack(anchor="w", padx=20, pady=(16, 6))
 
-        # ------------------------------------------------------
-        # TODAY TOTAL
-        # ------------------------------------------------------
-
-        today_total = self.get_today_total()
-
-        self.today_total_label = ctk.CTkLabel(
+        self.today_sales_amount_label = ctk.CTkLabel(
             today_frame,
-            text=f"₱{today_total:,.2f}",
-            font=ctk.CTkFont(
-                size=30,
-                weight="bold"
-            ),
-            text_color=self.BLUE
+            text="₱0.00",
+            font=Theme.font(32, "bold"),
+            text_color=Theme.PRIMARY
         )
-
-        self.today_total_label.pack(
-            anchor="w",
-            padx=25
-        )
+        self.today_sales_amount_label.pack(anchor="w", padx=20)
 
         ctk.CTkLabel(
             today_frame,
             text="Total sales today",
-            font=ctk.CTkFont(
-                size=12
-            ),
-            text_color=self.GRAY
-        ).pack(
-            anchor="w",
-            padx=25,
-            pady=(0, 20)
-        )
-
-        # ------------------------------------------------------
-        # TODAY TRANSACTIONS
-        # ------------------------------------------------------
-
-        today_transactions = self.get_today_transactions()
+            font=Theme.font(12),
+            text_color=Theme.GRAY
+        ).pack(anchor="w", padx=20, pady=(2, 8))
 
         self.today_transactions_label = ctk.CTkLabel(
             today_frame,
-            text=f"Transactions: {today_transactions}",
-            font=ctk.CTkFont(
-                size=14,
-                weight="bold"
-            ),
-            text_color=self.DARK
+            text="Transactions: 0",
+            font=Theme.font(14, "bold"),
+            text_color=Theme.DARK
         )
+        self.today_transactions_label.pack(anchor="w", padx=20, pady=(0, 16))
 
-        self.today_transactions_label.pack(
-            anchor="w",
-            padx=25
-        )
-
-        # ======================================================
-        # SALES FOR THIS MONTH
-        # ======================================================
-
+        # 2. Month Frame
         month_frame = ctk.CTkFrame(
-            sections,
-            fg_color=self.WHITE,
+            summary_frame,
+            fg_color=Theme.WHITE,
             corner_radius=10,
             border_width=2,
-            border_color=self.BLUE
+            border_color=Theme.PRIMARY
         )
-
-        month_frame.grid(
-            row=0,
-            column=1,
-            sticky="nsew",
-            padx=(10, 0)
-        )
-
-        # ------------------------------------------------------
-        # TITLE
-        # ------------------------------------------------------
+        month_frame.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
 
         ctk.CTkLabel(
             month_frame,
             text="Sales for this Month",
-            font=ctk.CTkFont(
-                size=20,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=25,
-            pady=(25, 15)
-        )
+            font=Theme.font(18, "bold"),
+            text_color=Theme.DARK
+        ).pack(anchor="w", padx=20, pady=(16, 6))
 
-        # ------------------------------------------------------
-        # MONTH TOTAL
-        # ------------------------------------------------------
-
-        month_total = self.get_month_total()
-
-        self.month_total_label = ctk.CTkLabel(
+        self.month_sales_amount_label = ctk.CTkLabel(
             month_frame,
-            text=f"₱{month_total:,.2f}",
-            font=ctk.CTkFont(
-                size=30,
-                weight="bold"
-            ),
-            text_color=self.BLUE
+            text="₱0.00",
+            font=Theme.font(32, "bold"),
+            text_color=Theme.PRIMARY
         )
-
-        self.month_total_label.pack(
-            anchor="w",
-            padx=25
-        )
+        self.month_sales_amount_label.pack(anchor="w", padx=20)
 
         ctk.CTkLabel(
             month_frame,
             text="Total sales this month",
-            font=ctk.CTkFont(
-                size=12
-            ),
-            text_color=self.GRAY
-        ).pack(
-            anchor="w",
-            padx=25,
-            pady=(0, 20)
-        )
-
-        # ------------------------------------------------------
-        # MONTH TRANSACTIONS
-        # ------------------------------------------------------
-
-        month_transactions = self.get_month_transactions()
+            font=Theme.font(12),
+            text_color=Theme.GRAY
+        ).pack(anchor="w", padx=20, pady=(2, 8))
 
         self.month_transactions_label = ctk.CTkLabel(
             month_frame,
-            text=f"Transactions: {month_transactions}",
-            font=ctk.CTkFont(
-                size=14,
-                weight="bold"
-            ),
-            text_color=self.DARK
+            text="Transactions: 0",
+            font=Theme.font(14, "bold"),
+            text_color=Theme.DARK
         )
-
-        self.month_transactions_label.pack(
-            anchor="w",
-            padx=25
-        )
+        self.month_transactions_label.pack(anchor="w", padx=20, pady=(0, 16))
 
         # ======================================================
-        # REFRESH BUTTON
+        # TRANSACTION HISTORY SECTION
         # ======================================================
-
-        refresh_frame = ctk.CTkFrame(
-            main,
-            fg_color="transparent"
+        history_header = ctk.CTkFrame(
+            sales_container,
+            height=50,
+            fg_color=Theme.PRIMARY,
+            corner_radius=8
         )
+        history_header.pack(fill="x", padx=20, pady=(10, 10))
+        history_header.pack_propagate(False)
 
-        refresh_frame.pack(
-            fill="x",
-            pady=(15, 0)
-        )
+        ctk.CTkLabel(
+            history_header,
+            text="TRANSACTION HISTORY",
+            font=Theme.font(15, "bold"),
+            text_color=Theme.WHITE
+        ).pack(side="left", padx=20)
 
         ctk.CTkButton(
-            refresh_frame,
+            history_header,
             text="Refresh",
-            width=110,
-            height=36,
-            corner_radius=8,
-            fg_color=self.BLUE,
-            hover_color=self.DARK_BLUE,
-            text_color=self.WHITE,
-            font=ctk.CTkFont(
-                size=11,
-                weight="bold"
-            ),
+            width=86,
+            height=34,
+            corner_radius=6,
+            fg_color=Theme.PRIMARY_DARK,
+            hover_color=Theme.PRIMARY_HOVER,
+            font=Theme.font(11, "bold"),
             command=self.refresh_sales
-        ).pack(
-            side="right"
+        ).pack(side="right", padx=12)
+
+        # Scrollable transaction area
+        self.sales_history_frame = ctk.CTkScrollableFrame(
+            sales_container,
+            fg_color="transparent"
+        )
+        self.sales_history_frame.pack(fill="both", expand=True, padx=20, pady=(0, 16))
+
+    # ==========================================================
+    # METRIC CALCULATIONS
+    # ==========================================================
+
+    def _get_sale_datetime(self, record: Any) -> datetime:
+        d = record.get("date") if isinstance(record, dict) else getattr(record, "date", None)
+        if isinstance(d, datetime):
+            return d
+        return datetime.now()
+
+    def _get_sale_total(self, record: Any) -> float:
+        try:
+            val = record.get("total") if isinstance(record, dict) else getattr(record, "total", 0)
+            return float(val)
+        except (ValueError, TypeError):
+            return 0.0
+
+    def get_today_total(self) -> float:
+        today = datetime.now().date()
+        return sum(self._get_sale_total(r) for r in self.sales_data if self._get_sale_datetime(r).date() == today)
+
+    def get_today_transactions(self) -> int:
+        today = datetime.now().date()
+        return sum(1 for r in self.sales_data if self._get_sale_datetime(r).date() == today)
+
+    def get_month_total(self) -> float:
+        now = datetime.now()
+        return sum(
+            self._get_sale_total(r) for r in self.sales_data
+            if self._get_sale_datetime(r).year == now.year and self._get_sale_datetime(r).month == now.month
+        )
+
+    def get_month_transactions(self) -> int:
+        now = datetime.now()
+        return sum(
+            1 for r in self.sales_data
+            if self._get_sale_datetime(r).year == now.year and self._get_sale_datetime(r).month == now.month
         )
 
     # ==========================================================
-    # GET TODAY TOTAL
-    # ==========================================================
-
-    def get_today_total(self):
-
-        today = datetime.now().date()
-
-        total = 0
-
-        for sale in self.sales_data:
-
-            sale_date = sale.get("date")
-
-            if isinstance(sale_date, datetime):
-                sale_date = sale_date.date()
-
-            if sale_date == today:
-
-                try:
-                    total += float(
-                        sale.get(
-                            "total",
-                            0
-                        )
-                    )
-
-                except (
-                    ValueError,
-                    TypeError
-                ):
-                    pass
-
-        return total
-
-    # ==========================================================
-    # GET MONTH TOTAL
-    # ==========================================================
-
-    def get_month_total(self):
-
-        current_date = datetime.now()
-
-        total = 0
-
-        for sale in self.sales_data:
-
-            sale_date = sale.get("date")
-
-            if isinstance(
-                sale_date,
-                datetime
-            ):
-
-                if (
-                    sale_date.year
-                    == current_date.year
-                    and
-                    sale_date.month
-                    == current_date.month
-                ):
-
-                    try:
-
-                        total += float(
-                            sale.get(
-                                "total",
-                                0
-                            )
-                        )
-
-                    except (
-                        ValueError,
-                        TypeError
-                    ):
-
-                        pass
-
-        return total
-
-    # ==========================================================
-    # TODAY TRANSACTIONS
-    # ==========================================================
-
-    def get_today_transactions(self):
-
-        today = datetime.now().date()
-
-        count = 0
-
-        for sale in self.sales_data:
-
-            sale_date = sale.get("date")
-
-            if isinstance(
-                sale_date,
-                datetime
-            ):
-
-                sale_date = sale_date.date()
-
-            if sale_date == today:
-
-                count += 1
-
-        return count
-
-    # ==========================================================
-    # MONTH TRANSACTIONS
-    # ==========================================================
-
-    def get_month_transactions(self):
-
-        current_date = datetime.now()
-
-        count = 0
-
-        for sale in self.sales_data:
-
-            sale_date = sale.get("date")
-
-            if isinstance(
-                sale_date,
-                datetime
-            ):
-
-                if (
-                    sale_date.year
-                    == current_date.year
-                    and
-                    sale_date.month
-                    == current_date.month
-                ):
-
-                    count += 1
-
-        return count
-
-    # ==========================================================
-    # REFRESH SALES
+    # REFRESH & RENDER
     # ==========================================================
 
     def refresh_sales(self):
-
         today_total = self.get_today_total()
+        today_tx = self.get_today_transactions()
         month_total = self.get_month_total()
+        month_tx = self.get_month_transactions()
 
-        today_transactions = (
-            self.get_today_transactions()
-        )
+        if hasattr(self, "today_sales_amount_label") and self.today_sales_amount_label.winfo_exists():
+            self.today_sales_amount_label.configure(text=f"₱{today_total:,.2f}")
+        if hasattr(self, "today_transactions_label") and self.today_transactions_label.winfo_exists():
+            self.today_transactions_label.configure(text=f"Transactions: {today_tx}")
+        if hasattr(self, "month_sales_amount_label") and self.month_sales_amount_label.winfo_exists():
+            self.month_sales_amount_label.configure(text=f"₱{month_total:,.2f}")
+        if hasattr(self, "month_transactions_label") and self.month_transactions_label.winfo_exists():
+            self.month_transactions_label.configure(text=f"Transactions: {month_tx}")
 
-        month_transactions = (
-            self.get_month_transactions()
-        )
+        if not hasattr(self, "sales_history_frame") or not self.sales_history_frame.winfo_exists():
+            return
 
-        self.today_total_label.configure(
-            text=f"₱{today_total:,.2f}"
-        )
+        for w in self.sales_history_frame.winfo_children():
+            w.destroy()
 
-        self.month_total_label.configure(
-            text=f"₱{month_total:,.2f}"
-        )
+        if not self.sales_data:
+            ctk.CTkLabel(
+                self.sales_history_frame,
+                text="No transactions yet.",
+                font=Theme.font(15, "bold"),
+                text_color=Theme.GRAY
+            ).pack(pady=50)
+            return
 
-        self.today_transactions_label.configure(
-            text=f"Transactions: {today_transactions}"
-        )
+        records = list(reversed(self.sales_data))
+        for index, record in enumerate(records, start=1):
+            tx_num = len(self.sales_data) - index + 1
+            dt = self._get_sale_datetime(record)
+            total = self._get_sale_total(record)
+            cash = float(record.get("cash", total) if isinstance(record, dict) else getattr(record, "cash", total))
+            change = float(record.get("change", 0) if isinstance(record, dict) else getattr(record, "change", 0))
 
-        self.month_transactions_label.configure(
-            text=f"Transactions: {month_transactions}"
-        )
+            card = ctk.CTkFrame(
+                self.sales_history_frame,
+                fg_color=Theme.WHITE,
+                corner_radius=10,
+                border_width=1,
+                border_color=Theme.BORDER
+            )
+            card.pack(fill="x", pady=6)
+
+            # Transaction Header
+            head = ctk.CTkFrame(card, fg_color="transparent")
+            head.pack(fill="x", padx=16, pady=(12, 6))
+
+            ctk.CTkLabel(
+                head,
+                text=f"Transaction #{tx_num}",
+                font=Theme.font(14, "bold"),
+                text_color=Theme.DARK
+            ).pack(side="left")
+
+            ctk.CTkLabel(
+                head,
+                text=dt.strftime("%B %d, %Y  •  %I:%M %p"),
+                font=Theme.font(11),
+                text_color=Theme.GRAY
+            ).pack(side="right")
+
+            # Items Frame (light gray box)
+            items = record.get("items", []) if isinstance(record, dict) else getattr(record, "items", [])
+            if items:
+                items_box = ctk.CTkFrame(card, fg_color=Theme.BG, corner_radius=8)
+                items_box.pack(fill="x", padx=16, pady=4)
+
+                for item in items:
+                    name = item.get("name", "Product")
+                    qty = item.get("quantity", 1)
+                    price = float(item.get("price", 0))
+                    subtotal = price * qty
+
+                    item_row = ctk.CTkFrame(items_box, fg_color="transparent")
+                    item_row.pack(fill="x", padx=12, pady=5)
+
+                    ctk.CTkLabel(
+                        item_row,
+                        text=f"{name}  x{qty}",
+                        font=Theme.font(12, "bold"),
+                        text_color=Theme.DARK,
+                        anchor="w"
+                    ).pack(side="left")
+
+                    ctk.CTkLabel(
+                        item_row,
+                        text=f"₱{subtotal:,.2f}",
+                        font=Theme.font(12),
+                        text_color=Theme.DARK
+                    ).pack(side="right")
+
+            # Payment Info 3-Column Footer
+            payment_info = ctk.CTkFrame(card, fg_color="transparent")
+            payment_info.pack(fill="x", padx=16, pady=(6, 12))
+
+            # Column 1: Total
+            tot_col = ctk.CTkFrame(payment_info, fg_color="transparent")
+            tot_col.pack(side="left", expand=True, fill="x")
+            ctk.CTkLabel(tot_col, text="TOTAL", font=Theme.font(10, "bold"), text_color=Theme.GRAY, anchor="w").pack(anchor="w")
+            ctk.CTkLabel(tot_col, text=f"₱{total:,.2f}", font=Theme.font(17, "bold"), text_color=Theme.PRIMARY, anchor="w").pack(anchor="w")
+
+            # Column 2: Cash
+            cash_col = ctk.CTkFrame(payment_info, fg_color="transparent")
+            cash_col.pack(side="left", expand=True, fill="x")
+            ctk.CTkLabel(cash_col, text="CASH", font=Theme.font(10, "bold"), text_color=Theme.GRAY, anchor="w").pack(anchor="w")
+            ctk.CTkLabel(cash_col, text=f"₱{cash:,.2f}", font=Theme.font(17, "bold"), text_color=Theme.DARK, anchor="w").pack(anchor="w")
+
+            # Column 3: Change
+            chg_col = ctk.CTkFrame(payment_info, fg_color="transparent")
+            chg_col.pack(side="left", expand=True, fill="x")
+            ctk.CTkLabel(chg_col, text="CHANGE", font=Theme.font(10, "bold"), text_color=Theme.GRAY, anchor="w").pack(anchor="w")
+            ctk.CTkLabel(chg_col, text=f"₱{change:,.2f}", font=Theme.font(17, "bold"), text_color=Theme.DARK, anchor="w").pack(anchor="w")
+
+
+# Backward-compatible alias
+Sales = SalesView

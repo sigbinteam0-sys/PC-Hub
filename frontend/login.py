@@ -1,634 +1,218 @@
+"""Login window and authentication screen for Aztech POS."""
 import customtkinter as ctk
 from tkinter import messagebox
+
+from frontend.theme import Theme
 from frontend.dashboard import Dashboard
 
 
+class BrandPanel(ctk.CTkFrame):
+    """Left branding panel with computer store logo and information."""
+
+    def __init__(self, parent, width: int = 460):
+        super().__init__(parent, width=width, fg_color=Theme.PRIMARY, corner_radius=0)
+        self.pack_propagate(False)
+
+        # Top accent strip
+        ctk.CTkFrame(self, height=10, fg_color=Theme.PRIMARY_DARK, corner_radius=0).pack(fill="x", side="top")
+
+        # Centered Brand Content
+        center = ctk.CTkFrame(self, fg_color="transparent")
+        center.place(relx=0.5, rely=0.48, anchor="center")
+
+        # Monitor icon graphic
+        icon_box = ctk.CTkFrame(center, width=130, height=105, fg_color=Theme.WHITE, corner_radius=14)
+        icon_box.pack(pady=(0, 20))
+        icon_box.pack_propagate(False)
+
+        monitor = ctk.CTkFrame(icon_box, width=76, height=50, fg_color=Theme.PRIMARY, corner_radius=5)
+        monitor.place(relx=0.5, rely=0.40, anchor="center")
+
+        screen = ctk.CTkFrame(monitor, width=64, height=38, fg_color=Theme.WHITE, corner_radius=2)
+        screen.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Display inner code-like lines
+        ctk.CTkFrame(screen, width=32, height=4, fg_color=Theme.PRIMARY, corner_radius=2).place(relx=0.5, rely=0.36, anchor="center")
+        ctk.CTkFrame(screen, width=44, height=4, fg_color=Theme.PRIMARY_DARK, corner_radius=2).place(relx=0.5, rely=0.58, anchor="center")
+
+        # Stand & base
+        ctk.CTkFrame(icon_box, width=12, height=14, fg_color=Theme.GRAY, corner_radius=0).place(relx=0.5, rely=0.74, anchor="center")
+        ctk.CTkFrame(icon_box, width=42, height=6, fg_color=Theme.DARK, corner_radius=3).place(relx=0.5, rely=0.86, anchor="center")
+
+        # Brand Text
+        ctk.CTkLabel(
+            center,
+            text="AZTECH",
+            font=Theme.font(34, "bold"),
+            text_color=Theme.WHITE
+        ).pack()
+
+        ctk.CTkLabel(
+            center,
+            text="COMPUTER STORE",
+            font=Theme.font(14, "bold"),
+            text_color=Theme.PRIMARY_LIGHT
+        ).pack(pady=(0, 6))
+
+        ctk.CTkLabel(
+            center,
+            text="Point of Sale & Inventory System",
+            font=Theme.font(12),
+            text_color="#CADCF8"
+        ).pack()
+
+        # Version tag
+        vbox = ctk.CTkFrame(center, fg_color=Theme.PRIMARY_DARK, corner_radius=12)
+        vbox.pack(pady=(16, 0))
+        ctk.CTkLabel(
+            vbox,
+            text="v1.0 • Enterprise Edition",
+            font=Theme.font(11),
+            text_color=Theme.WHITE
+        ).pack(padx=14, pady=4)
+
+
 class LoginWindow:
+    """Authentication view controller for POS access."""
+
+    # Backward-compatible color constants
+    BLUE = Theme.PRIMARY
+    DARK_BLUE = Theme.PRIMARY_DARK
+    LIGHT_BLUE = Theme.PRIMARY_LIGHT
+    WHITE = Theme.WHITE
+    BG = Theme.BG
+    DARK = Theme.DARK
+    GRAY = Theme.GRAY
+    BORDER = Theme.BORDER
+    RED = Theme.DANGER
 
     def __init__(self, root):
         self.root = root
+        self.root.title("Aztech Computer Store - POS & Inventory Login")
+        self.root.resizable(True, True)
 
-        # ======================================================
-        # COLORS
-        # ======================================================
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
 
-        self.BLUE = "#1769D1"
-        self.DARK_BLUE = "#0B3D91"
-        self.LIGHT_BLUE = "#EAF3FF"
+        app_w = min(960, screen_w - 40)
+        app_h = min(620, screen_h - 60)
+        x = max(0, (screen_w - app_w) // 2)
+        y = max(0, (screen_h - app_h) // 2)
 
-        self.WHITE = "#FFFFFF"
-        self.BG = "#F5F7FA"
+        self.root.geometry(f"{app_w}x{app_h}+{x}+{y}")
+        self.root.minsize(860, 520)
+        self.root.configure(fg_color=Theme.WHITE)
 
-        self.DARK = "#17202A"
-        self.GRAY = "#6B7280"
-        self.LIGHT_GRAY = "#9CA3AF"
+        self._show_password = False
+        self._build_ui()
 
-        self.BORDER = "#D7E0EA"
-        self.INPUT_BG = "#F8FAFC"
+    def _build_ui(self):
+        main = ctk.CTkFrame(self.root, fg_color=Theme.WHITE, corner_radius=0)
+        main.pack(fill="both", expand=True)
 
-        # ======================================================
-        # WINDOW
-        # ======================================================
+        # Left branding panel
+        BrandPanel(main, width=420).pack(side="left", fill="y")
 
-        self.root.title("Aztech Computer Store - POS")
-        self.root.geometry("1100x650")
-        self.root.minsize(900, 550)
+        # Right login form panel
+        right = ctk.CTkFrame(main, fg_color=Theme.WHITE, corner_radius=0)
+        right.pack(side="right", fill="both", expand=True)
 
-        self.root.configure(
-            fg_color=self.BG
-        )
+        card = ctk.CTkFrame(right, width=380, fg_color=Theme.WHITE, corner_radius=0)
+        card.place(relx=0.5, rely=0.5, anchor="center")
 
-        self.create_login()
-
-    # ==========================================================
-    # LOGIN DESIGN
-    # ==========================================================
-
-    def create_login(self):
-
-        # ======================================================
-        # MAIN CONTAINER
-        # ======================================================
-
-        main = ctk.CTkFrame(
-            self.root,
-            fg_color=self.WHITE,
-            corner_radius=0
-        )
-
-        main.pack(
-            fill="both",
-            expand=True
-        )
-
-        # ======================================================
-        # LEFT BRANDING PANEL
-        # ======================================================
-
-        left = ctk.CTkFrame(
-            main,
-            width=520,
-            fg_color=self.BLUE,
-            corner_radius=0
-        )
-
-        left.pack(
-            side="left",
-            fill="y"
-        )
-
-        left.pack_propagate(False)
-
-        # ======================================================
-        # TOP DARK BLUE STRIP
-        # ======================================================
-
-        ctk.CTkFrame(
-            left,
-            height=12,
-            fg_color=self.DARK_BLUE,
-            corner_radius=0
-        ).pack(
-            fill="x",
-            side="top"
-        )
-
-        # ======================================================
-        # BRAND CONTENT
-        # ======================================================
-
-        brand = ctk.CTkFrame(
-            left,
-            fg_color="transparent"
-        )
-
-        brand.place(
-            relx=0.5,
-            rely=0.47,
-            anchor="center"
-        )
-
-        # ======================================================
-        # COMPUTER ICON
-        # ======================================================
-
-        icon_box = ctk.CTkFrame(
-            brand,
-            width=145,
-            height=115,
-            fg_color=self.WHITE,
-            corner_radius=15
-        )
-
-        icon_box.pack(
-            pady=(0, 25)
-        )
-
-        icon_box.pack_propagate(False)
-
-        # Monitor body
-        monitor = ctk.CTkFrame(
-            icon_box,
-            width=82,
-            height=55,
-            fg_color=self.BLUE,
-            corner_radius=5
-        )
-
-        monitor.place(
-            relx=0.5,
-            rely=0.39,
-            anchor="center"
-        )
-
-        # Monitor screen
-        screen = ctk.CTkFrame(
-            monitor,
-            width=68,
-            height=41,
-            fg_color=self.WHITE,
-            corner_radius=2
-        )
-
-        screen.place(
-            relx=0.5,
-            rely=0.5,
-            anchor="center"
-        )
-
-        # Monitor stand
-        ctk.CTkFrame(
-            icon_box,
-            width=8,
-            height=14,
-            fg_color=self.BLUE,
-            corner_radius=2
-        ).place(
-            relx=0.5,
-            rely=0.68,
-            anchor="center"
-        )
-
-        # Monitor base
-        ctk.CTkFrame(
-            icon_box,
-            width=48,
-            height=7,
-            fg_color=self.BLUE,
-            corner_radius=3
-        ).place(
-            relx=0.5,
-            rely=0.78,
-            anchor="center"
-        )
-
-        # ======================================================
-        # STORE NAME
-        # ======================================================
-
-        ctk.CTkLabel(
-            brand,
-            text="AZTECH",
-            font=ctk.CTkFont(
-                size=42,
-                weight="bold"
-            ),
-            text_color=self.WHITE
-        ).pack()
-
-        ctk.CTkLabel(
-            brand,
-            text="computer store",
-            font=ctk.CTkFont(
-                size=23,
-                weight="bold"
-            ),
-            text_color="#DCEBFF"
-        ).pack(
-            pady=(0, 8)
-        )
-
-        ctk.CTkLabel(
-            brand,
-            text="POINT OF SALE SYSTEM",
-            font=ctk.CTkFont(
-                size=13,
-                weight="bold"
-            ),
-            text_color=self.WHITE
-        ).pack()
-
-        # ======================================================
-        # STORE DESCRIPTION
-        # ======================================================
-
-        ctk.CTkLabel(
-            brand,
-            text="COMPUTER PARTS  •  ACCESSORIES  •  SERVICES",
-            font=ctk.CTkFont(
-                size=10,
-                weight="bold"
-            ),
-            text_color="#DCEBFF"
-        ).pack(
-            pady=(15, 0)
-        )
-
-        # ======================================================
-        # RIGHT LOGIN PANEL
-        # ======================================================
-
-        right = ctk.CTkFrame(
-            main,
-            fg_color=self.WHITE,
-            corner_radius=0
-        )
-
-        right.pack(
-            side="left",
-            fill="both",
-            expand=True
-        )
-
-        # ======================================================
-        # LOGIN CARD
-        # ======================================================
-
-        card = ctk.CTkFrame(
-            right,
-            width=410,
-            height=500,
-            fg_color=self.WHITE,
-            corner_radius=0
-        )
-
-        card.place(
-            relx=0.5,
-            rely=0.5,
-            anchor="center"
-        )
-
-        card.pack_propagate(False)
-
-        # ======================================================
-        # STAFF LOGIN
-        # ======================================================
-
+        # Titles
         ctk.CTkLabel(
             card,
-            text="STAFF LOGIN",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.BLUE
-        ).pack(
-            pady=(20, 8)
-        )
-
-        # ======================================================
-        # WELCOME
-        # ======================================================
-
-        ctk.CTkLabel(
-            card,
-            text="Welcome Back!",
-            font=ctk.CTkFont(
-                size=32,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack()
-
-        ctk.CTkLabel(
-            card,
-            text="Login to continue to your POS system",
-            font=ctk.CTkFont(
-                size=13
-            ),
-            text_color=self.GRAY
-        ).pack(
-            pady=(7, 32)
-        )
-
-        # ======================================================
-        # USERNAME LABEL
-        # ======================================================
-
-        ctk.CTkLabel(
-            card,
-            text="Username",
-            font=ctk.CTkFont(
-                size=13,
-                weight="bold"
-            ),
-            text_color=self.DARK,
+            text="Sign In",
+            font=Theme.font(28, "bold"),
+            text_color=Theme.DARK,
             anchor="w"
-        ).pack(
-            fill="x",
-            padx=30
-        )
+        ).pack(fill="x")
 
-        # ======================================================
-        # USERNAME ENTRY
-        # ======================================================
+        ctk.CTkLabel(
+            card,
+            text="Welcome back! Please enter your admin credentials.",
+            font=Theme.font(12),
+            text_color=Theme.GRAY,
+            anchor="w"
+        ).pack(fill="x", pady=(4, 20))
 
+        # Username Field
+        ctk.CTkLabel(card, text="Username", font=Theme.font(12, "bold"), text_color=Theme.DARK, anchor="w").pack(fill="x")
         self.username_entry = ctk.CTkEntry(
-            card,
-            width=350,
-            height=46,
-            corner_radius=8,
-            border_width=1,
-            border_color=self.BORDER,
-            fg_color=self.INPUT_BG,
-            text_color=self.DARK,
-            placeholder_text="Enter username",
-            placeholder_text_color=self.LIGHT_GRAY,
-            font=ctk.CTkFont(
-                size=13
-            )
+            card, height=44, placeholder_text="Enter username (admin)",
+            font=Theme.font(12), border_color=Theme.BORDER
         )
+        self.username_entry.pack(fill="x", pady=(4, 14))
 
-        self.username_entry.pack(
-            padx=30,
-            pady=(8, 22)
-        )
+        # Password Field
+        ctk.CTkLabel(card, text="Password", font=Theme.font(12, "bold"), text_color=Theme.DARK, anchor="w").pack(fill="x")
 
-        # ======================================================
-        # PASSWORD LABEL
-        # ======================================================
-
-        ctk.CTkLabel(
-            card,
-            text="Password",
-            font=ctk.CTkFont(
-                size=13,
-                weight="bold"
-            ),
-            text_color=self.DARK,
-            anchor="w"
-        ).pack(
-            fill="x",
-            padx=30
-        )
-
-        # ======================================================
-        # PASSWORD FRAME
-        # ======================================================
-
-        password_frame = ctk.CTkFrame(
-            card,
-            width=350,
-            height=46,
-            fg_color=self.INPUT_BG,
-            border_width=1,
-            border_color=self.BORDER,
-            corner_radius=8
-        )
-
-        password_frame.pack(
-            padx=30,
-            pady=(8, 25)
-        )
-
-        password_frame.pack_propagate(False)
-
-        # ======================================================
-        # PASSWORD ENTRY
-        # ======================================================
+        pass_row = ctk.CTkFrame(card, fg_color="transparent")
+        pass_row.pack(fill="x", pady=(4, 18))
 
         self.password_entry = ctk.CTkEntry(
-            password_frame,
-            height=44,
-            fg_color="transparent",
-            border_width=0,
-            text_color=self.DARK,
-            placeholder_text="Enter password",
-            placeholder_text_color=self.LIGHT_GRAY,
-            show="•",
-            font=ctk.CTkFont(
-                size=13
-            )
+            pass_row, height=44, placeholder_text="Enter password (admin)",
+            show="•", font=Theme.font(12), border_color=Theme.BORDER
         )
+        self.password_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
 
-        self.password_entry.pack(
-            side="left",
-            fill="both",
-            expand=True,
-            padx=(10, 0)
+        self.eye_btn = ctk.CTkButton(
+            pass_row, text="👁", width=44, height=44, corner_radius=6,
+            fg_color=Theme.BG, hover_color=Theme.BORDER, text_color=Theme.DARK,
+            font=Theme.font(14), command=self.toggle_password
         )
+        self.eye_btn.pack(side="right")
 
-        # ======================================================
-        # SHOW PASSWORD
-        # ======================================================
-
-        self.show_password = False
-
-        self.show_button = ctk.CTkButton(
-            password_frame,
-            text="Show",
-            width=55,
-            height=30,
-            corner_radius=6,
-            fg_color="transparent",
-            hover_color=self.LIGHT_BLUE,
-            text_color=self.BLUE,
-            font=ctk.CTkFont(
-                size=10,
-                weight="bold"
-            ),
-            command=self.toggle_password
-        )
-
-        self.show_button.pack(
-            side="right",
-            padx=5
-        )
-
-        # ======================================================
-        # LOGIN BUTTON
-        # ======================================================
-
+        # Submit button
         ctk.CTkButton(
-            card,
-            text="LOGIN",
-            width=350,
-            height=48,
-            corner_radius=8,
-            fg_color=self.BLUE,
-            hover_color=self.DARK_BLUE,
-            text_color=self.WHITE,
-            font=ctk.CTkFont(
-                size=14,
-                weight="bold"
-            ),
-            command=self.login
-        ).pack(
-            padx=30
-        )
+            card, text="Sign In", height=44, corner_radius=8,
+            fg_color=Theme.PRIMARY, hover_color=Theme.PRIMARY_DARK,
+            font=Theme.font(13, "bold"), command=self.login
+        ).pack(fill="x", pady=(6, 16))
 
-        # ======================================================
-        # FOOTER
-        # ======================================================
-
+        # Footer
         ctk.CTkLabel(
-            card,
-            text="Aztech Computer Store",
-            font=ctk.CTkFont(
-                size=11,
-                weight="bold"
-            ),
-            text_color=self.GRAY
-        ).pack(
-            pady=(25, 2)
-        )
-
-        ctk.CTkLabel(
-            card,
-            text="Computer Parts Management System",
-            font=ctk.CTkFont(
-                size=10
-            ),
-            text_color=self.LIGHT_GRAY
+            card, text="Default Credentials: admin / admin",
+            font=Theme.font(11), text_color=Theme.GRAY
         ).pack()
 
-        # ======================================================
-        # ENTER KEY
-        # ======================================================
-
-        self.root.bind(
-            "<Return>",
-            lambda event: self.login()
-        )
-
+        # Keyboard Enter bindings
+        self.username_entry.bind("<Return>", lambda e: self.password_entry.focus())
+        self.password_entry.bind("<Return>", lambda e: self.login())
         self.username_entry.focus()
-
-    # ==========================================================
-    # SHOW / HIDE PASSWORD
-    # ==========================================================
 
     def toggle_password(self):
-
-        self.show_password = not self.show_password
-
-        if self.show_password:
-
-            self.password_entry.configure(
-                show=""
-            )
-
-            self.show_button.configure(
-                text="Hide"
-            )
-
+        self._show_password = not self._show_password
+        if self._show_password:
+            self.password_entry.configure(show="")
+            self.eye_btn.configure(text="🔒")
         else:
-
-            self.password_entry.configure(
-                show="•"
-            )
-
-            self.show_button.configure(
-                text="Show"
-            )
-
-    # ==========================================================
-    # LOGIN
-    # ==========================================================
+            self.password_entry.configure(show="•")
+            self.eye_btn.configure(text="👁")
 
     def login(self):
+        user = self.username_entry.get().strip()
+        pw = self.password_entry.get().strip()
 
-        username = self.username_entry.get().strip()
-        password = self.password_entry.get().strip()
-
-        # ======================================================
-        # CHECK EMPTY FIELDS
-        # ======================================================
-
-        if username == "" or password == "":
-
-            messagebox.showwarning(
-                "Missing Information",
-                "Please enter your username and password.",
-                parent=self.root
-            )
-
+        if not user or not pw:
+            messagebox.showwarning("Missing Info", "Please enter both username and password.", parent=self.root)
             return
 
-        # ======================================================
-        # TEMPORARY LOGIN
-        #
-        # Username: admin
-        # Password: admin
-        # ======================================================
-
-        if username == "admin" and password == "admin":
-
+        if user == "admin" and pw == "admin":
             self.open_dashboard()
-
         else:
-
-            messagebox.showerror(
-                "Login Failed",
-                "Invalid username or password.",
-                parent=self.root
-            )
-
-            self.password_entry.delete(
-                0,
-                "end"
-            )
-
+            messagebox.showerror("Authentication Failed", "Invalid username or password.", parent=self.root)
+            self.password_entry.delete(0, "end")
             self.password_entry.focus()
 
-    # ==========================================================
-    # OPEN DASHBOARD
-    # ==========================================================
-
     def open_dashboard(self):
-
         self.root.withdraw()
+        dash = Dashboard(self.root)
+        dash.root.protocol("WM_DELETE_WINDOW", lambda: self.close_dashboard(dash))
 
-        dashboard = Dashboard(self.root)
-
-        dashboard.root.protocol(
-            "WM_DELETE_WINDOW",
-            lambda: self.close_dashboard(dashboard)
-        )
-
-    # ==========================================================
-    # CLOSE DASHBOARD
-    # ==========================================================
-
-    def close_dashboard(self, dashboard):
-
-        dashboard.root.destroy()
-
+    def close_dashboard(self, dash):
+        dash.root.destroy()
         self.root.deiconify()
-
-        self.username_entry.delete(
-            0,
-            "end"
-        )
-
-        self.password_entry.delete(
-            0,
-            "end"
-        )
-
+        self.password_entry.delete(0, "end")
         self.username_entry.focus()
-
-
-# ==============================================================
-# RUN PROGRAM
-# ==============================================================
-
-if __name__ == "__main__":
-
-    ctk.set_appearance_mode("light")
-    ctk.set_default_color_theme("blue")
-
-    root = ctk.CTk()
-
-    app = LoginWindow(root)
-
-    root.mainloop()

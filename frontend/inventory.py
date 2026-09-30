@@ -1,1896 +1,451 @@
-import customtkinter as ctk
-from tkinter import messagebox, filedialog
-from PIL import Image
+"""Inventory management view for Aztech POS & Inventory."""
 import os
 import shutil
+from typing import List, Dict, Any, Optional, Callable
+import customtkinter as ctk
+from tkinter import messagebox
+from PIL import Image
+
+from frontend.theme import Theme
+from frontend.modals import ProductFormModal
 
 
 class Inventory(ctk.CTkFrame):
+    """Inventory table view with search, filter, Add/Edit/Delete capabilities."""
 
-    # ==========================================================
-    # COLORS
-    # ==========================================================
-
-    BLUE = "#1769D1"
-    DARK_BLUE = "#0F4FA8"
-    LIGHT_BLUE = "#EAF3FF"
-
-    WHITE = "#FFFFFF"
-    BG = "#F4F7FB"
-
-    DARK = "#172033"
-    GRAY = "#667085"
-    BORDER = "#D6E0ED"
-
-    RED = "#D66D70"
-    LIGHT_RED = "#FFF1F1"
-
-    IMAGE_GRAY = "#E8EEF5"
-
-    # ==========================================================
-    # INIT
-    # ==========================================================
-
-    def __init__(self, parent, products, refresh_callback=None):
-
-        super().__init__(
-            parent,
-            fg_color=self.BG,
-            corner_radius=0
-        )
+    def __init__(self, parent, products: List[Any], refresh_callback: Optional[Callable[[], None]] = None):
+        super().__init__(parent, fg_color=Theme.BG, corner_radius=0)
 
         self.parent = parent
         self.products = products
         self.refresh_callback = refresh_callback
 
-        self.selected_product = None
-
-        # Search
         self.search_text = ""
+        self.checkbox_vars = {}
+        self.select_all_var = ctk.BooleanVar(value=False)
 
-        # This is a PAGE, not a separate window
-        self.pack(
-            fill="both",
-            expand=True
-        )
-
-        self.create_inventory()
+        self.pack(fill="both", expand=True)
+        self._build_ui()
+        self.refresh_table()
 
     # ==========================================================
-    # IMAGE FOLDER
+    # IMAGE UTILS
     # ==========================================================
 
-    def get_images_folder(self):
+    def get_images_folder(self) -> str:
+        folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images")
+        os.makedirs(folder, exist_ok=True)
+        return folder
 
-        # inventory.py is inside the frontend folder
-        frontend_folder = os.path.dirname(
-            os.path.abspath(__file__)
-        )
+    def resolve_image_path(self, img_path: str) -> Optional[str]:
+        if not img_path:
+            return None
+        if os.path.isabs(img_path) and os.path.exists(img_path):
+            return img_path
+        if os.path.exists(img_path):
+            return os.path.abspath(img_path)
 
-        images_folder = os.path.join(
-            frontend_folder,
-            "images"
-        )
+        # Check PC-Hub folder
+        project_folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        candidate = os.path.join(project_folder, img_path)
+        if os.path.exists(candidate):
+            return candidate
 
-        # Automatically create images folder
-        os.makedirs(
-            images_folder,
-            exist_ok=True
-        )
+        # Check frontend/images
+        cand2 = os.path.join(self.get_images_folder(), os.path.basename(img_path))
+        if os.path.exists(cand2):
+            return cand2
 
-        return images_folder
+        return None
 
-    # ==========================================================
-    # SAVE PRODUCT IMAGE
-    # ==========================================================
-
-    def save_product_image(self, source_path, product_name):
-
+    def _persist_image_if_needed(self, source_path: str, product_name: str) -> str:
         if not source_path:
             return ""
+        resolved = self.resolve_image_path(source_path)
+        if resolved and os.path.exists(resolved):
+            return source_path
 
-        try:
-
-            images_folder = self.get_images_folder()
-
-            # Get original extension
-            extension = os.path.splitext(
-                source_path
-            )[1].lower()
-
-            # Create safe filename from product name
-            safe_name = "".join(
-                character
-                for character in product_name
-                if character.isalnum()
-                or character in (" ", "_", "-")
-            ).strip()
-
-            safe_name = safe_name.replace(
-                " ",
-                "_"
-            )
-
-            # If product name somehow becomes empty
-            if not safe_name:
-                safe_name = "product"
-
-            destination = os.path.join(
-                images_folder,
-                safe_name + extension
-            )
-
-            # Prevent overwriting existing image
-            counter = 1
-
-            while os.path.exists(destination):
-
-                destination = os.path.join(
-                    images_folder,
-                    f"{safe_name}_{counter}{extension}"
-                )
-
-                counter += 1
-
-            # Copy image into frontend/images
-            shutil.copy2(
-                source_path,
-                destination
-            )
-
-            return destination
-
-        except Exception as error:
-
-            messagebox.showerror(
-                "Image Error",
-                f"Unable to save product picture.\n\n{error}",
-                parent=self.winfo_toplevel()
-            )
-
-            return ""
+        if os.path.exists(source_path):
+            try:
+                images_dir = self.get_images_folder()
+                ext = os.path.splitext(source_path)[1]
+                safe_name = "".join(c for c in product_name if c.isalnum() or c in ("-", "_")).lower()
+                dest_filename = f"{safe_name}{ext}"
+                dest_path = os.path.join(images_dir, dest_filename)
+                shutil.copy2(source_path, dest_path)
+                return os.path.join("frontend", "images", dest_filename)
+            except Exception:
+                return source_path
+        return source_path
 
     # ==========================================================
-    # DELETE PRODUCT IMAGE
+    # UI CONSTRUCTION
     # ==========================================================
 
-    def delete_product_image(self, image_path):
+    def _build_ui(self):
+        main = ctk.CTkFrame(self, fg_color=Theme.BG, corner_radius=0)
+        main.pack(fill="both", expand=True, padx=16, pady=16)
 
-        if not image_path:
-            return
-
-        try:
-
-            if os.path.exists(image_path):
-
-                os.remove(
-                    image_path
-                )
-
-        except Exception:
-            pass
-
-    # ==========================================================
-    # INVENTORY UI
-    # ==========================================================
-
-    def create_inventory(self):
-
-        # ======================================================
-        # TITLE + SEARCH BAR
-        # ======================================================
-
-        top_frame = ctk.CTkFrame(
-            self,
-            fg_color=self.WHITE,
-            corner_radius=10
-        )
-
-        top_frame.pack(
-            fill="x",
-            padx=10,
-            pady=(10, 10)
-        )
-
-        # ======================================================
-        # PRODUCT TITLE
-        # ======================================================
-
-        ctk.CTkLabel(
-            top_frame,
-            text="Inventory",
-            font=ctk.CTkFont(
-                size=15,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            side="left",
-            padx=18,
-            pady=10
-        )
-
-        # ======================================================
-        # SEARCH AREA
-        # ======================================================
-
-        search_frame = ctk.CTkFrame(
-            top_frame,
-            fg_color="transparent"
-        )
-
-        search_frame.pack(
-            side="right",
-            padx=10,
-            pady=8
-        )
-
-        # ======================================================
-        # SEARCH BUTTON
-        # ======================================================
+        # 1. Docked Action Bar at bottom (62px)
+        action_bar = ctk.CTkFrame(main, fg_color=Theme.CARD_BG, corner_radius=10,
+                                  border_width=1, border_color=Theme.BORDER, height=62)
+        action_bar.pack(side="bottom", fill="x", pady=(12, 0))
+        action_bar.pack_propagate(False)
 
         ctk.CTkButton(
-            search_frame,
-            text="🔍  Search",
-            width=90,
-            height=36,
+            action_bar,
+            text="+ Add Product",
+            width=150,
+            height=42,
             corner_radius=8,
-            fg_color=self.BLUE,
-            hover_color=self.DARK_BLUE,
-            text_color=self.WHITE,
-            font=ctk.CTkFont(
-                size=11,
-                weight="bold"
-            ),
-            command=self.on_search
-        ).pack(
-            side="left",
-            padx=(0, 10)
-        )
+            fg_color=Theme.PRIMARY,
+            hover_color=Theme.PRIMARY_DARK,
+            font=Theme.font(12, "bold"),
+            command=self.add_product
+        ).pack(side="left", padx=16, pady=10)
 
-        # ======================================================
-        # SEARCH ENTRY
-        # ======================================================
+        ctk.CTkButton(
+            action_bar,
+            text="Delete Selected",
+            width=140,
+            height=42,
+            corner_radius=8,
+            fg_color="#FEE2E2",
+            hover_color="#FCA5A5",
+            text_color=Theme.DANGER,
+            font=Theme.font(12, "bold"),
+            command=self.delete_selected
+        ).pack(side="left", padx=6, pady=10)
+
+        self.item_count_label = ctk.CTkLabel(
+            action_bar,
+            text=f"Total: {len(self.products)} products",
+            font=Theme.font(12),
+            text_color=Theme.GRAY
+        )
+        self.item_count_label.pack(side="right", padx=16)
+
+        # 2. Top Header & Search
+        top_bar = ctk.CTkFrame(main, fg_color="transparent")
+        top_bar.pack(fill="x", pady=(0, 12))
+
+        ctk.CTkLabel(
+            top_bar,
+            text="Inventory Management",
+            font=Theme.font(22, "bold"),
+            text_color=Theme.DARK
+        ).pack(side="left")
+
+        search_box = ctk.CTkFrame(top_bar, fg_color=Theme.CARD_BG, corner_radius=8,
+                                  border_width=1, border_color=Theme.BORDER)
+        search_box.pack(side="right")
 
         self.search_entry = ctk.CTkEntry(
-            search_frame,
-            width=350,
-            height=36,
-            corner_radius=8,
-            placeholder_text="Search products..."
+            search_box,
+            placeholder_text="Search inventory...",
+            width=280,
+            height=38,
+            border_width=0,
+            font=Theme.font(12)
         )
-
-        self.search_entry.pack(
-            side="left"
-        )
-
-        # Press Enter to search
-        self.search_entry.bind(
-            "<Return>",
-            self.on_search
-        )
-
-        # ======================================================
-        # TABLE CONTAINER
-        # ======================================================
-
-        table_container = ctk.CTkFrame(
-            self,
-            fg_color=self.WHITE,
-            corner_radius=10,
-            border_width=1,
-            border_color=self.BORDER
-        )
-
-        table_container.pack(
-            fill="both",
-            expand=True,
-            padx=20,
-            pady=(0, 10)
-        )
-
-        # ======================================================
-        # HEADER
-        # ======================================================
-
-        header = ctk.CTkFrame(
-            table_container,
-            fg_color=self.BLUE,
-            corner_radius=8
-        )
-
-        header.pack(
-            fill="x",
-            padx=8,
-            pady=8
-        )
-
-        column_weights = [
-            3,
-            2,
-            2,
-            1,
-            1,
-            1
-        ]
-
-        for column, weight in enumerate(
-            column_weights
-        ):
-
-            header.grid_columnconfigure(
-                column,
-                weight=weight,
-                uniform="inventory_columns"
-            )
-
-        headers = [
-            "Name",
-            "Category",
-            "Price",
-            "Quantity",
-            "Delete",
-            "Update"
-        ]
-
-        for column, text in enumerate(headers):
-
-            ctk.CTkLabel(
-                header,
-                text=text,
-                font=ctk.CTkFont(
-                    size=11,
-                    weight="bold"
-                ),
-                text_color=self.WHITE,
-                anchor="center"
-            ).grid(
-                row=0,
-                column=column,
-                sticky="ew",
-                padx=5,
-                pady=8
-            )
-
-        # ======================================================
-        # SCROLLABLE TABLE
-        # ======================================================
-
-        self.table = ctk.CTkScrollableFrame(
-            table_container,
-            fg_color=self.WHITE,
-            corner_radius=0
-        )
-
-        self.table.pack(
-            fill="both",
-            expand=True,
-            padx=8,
-            pady=(0, 8)
-        )
-
-        for column, weight in enumerate(
-            column_weights
-        ):
-
-            self.table.grid_columnconfigure(
-                column,
-                weight=weight,
-                uniform="inventory_columns"
-            )
-
-        # ======================================================
-        # BOTTOM BAR
-        # ======================================================
-
-        bottom = ctk.CTkFrame(
-            self,
-            height=60,
-            fg_color=self.BLUE,
-            corner_radius=0
-        )
-
-        bottom.pack(
-            fill="x",
-            side="bottom"
-        )
-
-        bottom.pack_propagate(False)
-
-        # ======================================================
-        # ADD PRODUCT
-        # ======================================================
+        self.search_entry.pack(side="left", padx=(10, 4), pady=2)
+        self.search_entry.bind("<KeyRelease>", self._on_search)
 
         ctk.CTkButton(
-            bottom,
-            text="Add Product",
-            width=120,
-            height=38,
-            corner_radius=8,
-            fg_color=self.WHITE,
-            hover_color=self.LIGHT_BLUE,
-            text_color=self.BLUE,
-            font=ctk.CTkFont(
-                size=11,
-                weight="bold"
-            ),
-            command=self.add_product
-        ).pack(
-            side="left",
-            padx=15,
-            pady=10
+            search_box,
+            text="Clear",
+            width=54,
+            height=32,
+            corner_radius=6,
+            fg_color="transparent",
+            text_color=Theme.GRAY,
+            hover_color=Theme.BG,
+            font=Theme.font(11),
+            command=self._clear_search
+        ).pack(side="right", padx=4)
+
+        # 3. Two-Column Inventory Container
+        table_panel = ctk.CTkFrame(main, fg_color=Theme.CARD_BG, corner_radius=10,
+                                   border_width=1, border_color=Theme.BORDER)
+        table_panel.pack(fill="both", expand=True)
+
+        # Sub-header toolbar (Select All + Live Item Count)
+        toolbar = ctk.CTkFrame(table_panel, fg_color=Theme.PRIMARY_LIGHT, corner_radius=8, height=44)
+        toolbar.pack(fill="x", padx=8, pady=8)
+        toolbar.pack_propagate(False)
+
+        ctk.CTkCheckBox(
+            toolbar,
+            text="Select All Products",
+            variable=self.select_all_var,
+            font=Theme.font(12, "bold"),
+            text_color=Theme.DARK,
+            command=self._toggle_select_all
+        ).pack(side="left", padx=14)
+
+        self.table_status_label = ctk.CTkLabel(
+            toolbar,
+            text=f"Total: {len(self.products)} products",
+            font=Theme.font(12, "bold"),
+            text_color=Theme.PRIMARY_DARK
         )
+        self.table_status_label.pack(side="right", padx=14)
 
-        # ======================================================
-        # LOAD TABLE
-        # ======================================================
-
-        self.refresh_table()
-
-    # ==========================================================
-    # SEARCH
-    # ==========================================================
-
-    def on_search(self, event=None):
-
-        self.search_text = (
-            self.search_entry
-            .get()
-            .strip()
-            .lower()
-        )
-
-        self.refresh_table()
+        # Two-Column Cards Scrollable Frame
+        self.rows_container = ctk.CTkScrollableFrame(table_panel, fg_color="transparent")
+        self.rows_container.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.rows_container.grid_columnconfigure(0, weight=1, uniform="inv_col")
+        self.rows_container.grid_columnconfigure(1, weight=1, uniform="inv_col")
 
     # ==========================================================
-    # GET FILTERED PRODUCTS
+    # DATA & TABLE OPERATIONS
     # ==========================================================
 
-    def get_filtered_products(self):
-
-        if not self.search_text:
-            return self.products
-
-        filtered = []
-
-        for product in self.products:
-
-            name = str(
-                product.get(
-                    "name",
-                    ""
-                )
-            ).lower()
-
-            category = str(
-                product.get(
-                    "category",
-                    ""
-                )
-            ).lower()
-
-            if (
-                self.search_text in name
-                or self.search_text in category
-            ):
-
-                filtered.append(
-                    product
-                )
-
-        return filtered
-
-    # ==========================================================
-    # REFRESH TABLE
-    # ==========================================================
+    def _get_filtered_products(self) -> List[tuple]:
+        q = self.search_text.lower().strip()
+        result = []
+        for idx, p in enumerate(self.products):
+            name = str(p.get("name", "")).lower()
+            cat = str(p.get("category", "")).lower()
+            desc = str(p.get("description", "")).lower()
+            if not q or (q in name or q in cat or q in desc):
+                result.append((idx, p))
+        return result
 
     def refresh_table(self):
+        for w in self.rows_container.winfo_children():
+            w.destroy()
 
-        if not hasattr(
-            self,
-            "table"
-        ):
-            return
+        self.checkbox_vars.clear()
+        filtered = self._get_filtered_products()
+        count_text = f"Showing {len(filtered)} of {len(self.products)} products"
+        self.item_count_label.configure(text=count_text)
+        if hasattr(self, "table_status_label"):
+            self.table_status_label.configure(text=count_text)
 
-        for widget in self.table.winfo_children():
-
-            widget.destroy()
-
-        filtered_products = (
-            self.get_filtered_products()
-        )
-
-        # ======================================================
-        # NO PRODUCTS
-        # ======================================================
-
-        if not filtered_products:
-
-            if self.search_text:
-
-                text = (
-                    f'No products found for '
-                    f'"{self.search_text}".'
-                )
-
-            else:
-
-                text = "No products in inventory."
-
+        if not filtered:
             ctk.CTkLabel(
-                self.table,
-                text=text,
-                font=ctk.CTkFont(
-                    size=16,
-                    weight="bold"
-                ),
-                text_color=self.GRAY
-            ).grid(
-                row=0,
-                column=0,
-                columnspan=6,
-                pady=80
-            )
-
+                self.rows_container,
+                text="No products match your search.",
+                font=Theme.font(15, "bold"),
+                text_color=Theme.GRAY
+            ).pack(pady=40)
             return
 
-        # ======================================================
-        # CREATE ROWS
-        # ======================================================
+        for card_idx, (original_idx, product) in enumerate(filtered):
+            self._create_card(card_idx, original_idx, product)
 
-        for display_index, product in enumerate(
-            filtered_products
-        ):
+    def _create_card(self, card_idx: int, index: int, product: Any):
+        row = card_idx // 2
+        col = card_idx % 2
 
-            if "quantity" not in product:
+        card = ctk.CTkFrame(
+            self.rows_container,
+            fg_color=Theme.WHITE,
+            corner_radius=10,
+            border_width=1,
+            border_color=Theme.BORDER,
+            height=98
+        )
+        card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
+        card.pack_propagate(False)
 
-                product["quantity"] = 10
+        # Checkbox & Thumbnail on left
+        card_left = ctk.CTkFrame(card, fg_color="transparent")
+        card_left.pack(side="left", fill="y", padx=(10, 8), pady=8)
 
-            if "image" not in product:
+        var = ctk.BooleanVar(value=False)
+        self.checkbox_vars[index] = var
+        ctk.CTkCheckBox(card_left, text="", variable=var, width=22).pack(side="left", padx=(0, 6))
 
-                product["image"] = ""
+        thumb_frame = ctk.CTkFrame(card_left, width=54, height=54, fg_color=Theme.IMAGE_GRAY, corner_radius=8)
+        thumb_frame.pack(side="left")
+        thumb_frame.pack_propagate(False)
 
+        img_lbl = ctk.CTkLabel(thumb_frame, text="📦", font=Theme.font(18))
+        img_lbl.place(relx=0.5, rely=0.5, anchor="center")
+
+        img_path = self.resolve_image_path(product.get("image", ""))
+        if img_path and os.path.exists(img_path):
             try:
+                pil_img = Image.open(img_path)
+                pil_img.thumbnail((50, 50))
+                ctk_img = ctk.CTkImage(light_image=pil_img, size=pil_img.size)
+                img_lbl.configure(image=ctk_img, text="")
+                img_lbl.image = ctk_img
+            except Exception:
+                pass
 
-                original_index = (
-                    self.products.index(product)
-                )
+        # Action buttons on right
+        card_right = ctk.CTkFrame(card, fg_color="transparent")
+        card_right.pack(side="right", fill="y", padx=(6, 12), pady=8)
 
-            except ValueError:
+        btn_box = ctk.CTkFrame(card_right, fg_color="transparent")
+        btn_box.pack(expand=True)
 
-                continue
+        ctk.CTkButton(
+            btn_box,
+            text="Edit",
+            width=54,
+            height=32,
+            corner_radius=6,
+            fg_color=Theme.PRIMARY,
+            hover_color=Theme.PRIMARY_DARK,
+            font=Theme.font(11, "bold"),
+            command=lambda idx=index: self.update_product(idx)
+        ).pack(side="left", padx=(0, 6))
 
-            self.create_product_row(
-                display_index,
-                original_index,
-                product
-            )
+        ctk.CTkButton(
+            btn_box,
+            text="✕",
+            width=32,
+            height=32,
+            corner_radius=6,
+            fg_color="#FEE2E2",
+            hover_color="#FCA5A5",
+            text_color=Theme.DANGER,
+            font=Theme.font(11, "bold"),
+            command=lambda idx=index: self.delete_product(idx)
+        ).pack(side="left")
 
-    # ==========================================================
-    # PRODUCT ROW
-    # ==========================================================
+        # Center product info
+        card_center = ctk.CTkFrame(card, fg_color="transparent")
+        card_center.pack(side="left", fill="both", expand=True, padx=4, pady=8)
 
-    def create_product_row(
-        self,
-        display_index,
-        original_index,
-        product
-    ):
-
-        row = ctk.CTkFrame(
-            self.table,
-            fg_color=(
-                self.WHITE
-                if display_index % 2 == 0
-                else "#F8FAFC"
-            ),
-            corner_radius=6
-        )
-
-        row.grid(
-            row=display_index,
-            column=0,
-            columnspan=6,
-            sticky="ew",
-            pady=2
-        )
-
-        column_weights = [
-            3,
-            2,
-            2,
-            1,
-            1,
-            1
-        ]
-
-        for column, weight in enumerate(
-            column_weights
-        ):
-
-            row.grid_columnconfigure(
-                column,
-                weight=weight,
-                uniform="inventory_columns"
-            )
-
-        # ======================================================
-        # NAME
-        # ======================================================
-
+        # Name
+        name_str = str(product.get("name", ""))
         ctk.CTkLabel(
-            row,
-            text=product.get(
-                "name",
-                "Unnamed Product"
-            ),
-            font=ctk.CTkFont(
-                size=11
-            ),
-            text_color=self.DARK,
+            card_center,
+            text=name_str,
+            font=Theme.font(13, "bold"),
+            text_color=Theme.DARK,
             anchor="w"
-        ).grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=10,
-            pady=8
-        )
+        ).pack(fill="x", anchor="w")
 
-        # ======================================================
-        # CATEGORY
-        # ======================================================
+        # Category Badge & Price Row
+        meta_row = ctk.CTkFrame(card_center, fg_color="transparent")
+        meta_row.pack(fill="x", anchor="w", pady=(3, 2))
+
+        cat_badge = ctk.CTkFrame(meta_row, fg_color=Theme.PRIMARY_LIGHT, corner_radius=10, height=22)
+        cat_badge.pack(side="left", padx=(0, 8))
+        cat_badge.pack_propagate(False)
 
         ctk.CTkLabel(
-            row,
-            text=product.get(
-                "category",
-                "Other"
-            ),
-            font=ctk.CTkFont(
-                size=11
-            ),
-            text_color=self.DARK,
-            anchor="center"
-        ).grid(
-            row=0,
-            column=1,
-            sticky="ew",
-            padx=5,
-            pady=8
-        )
+            cat_badge,
+            text=str(product.get("category", "")),
+            font=Theme.font(10, "bold"),
+            text_color=Theme.PRIMARY
+        ).place(relx=0.5, rely=0.5, anchor="center")
 
-        # ======================================================
-        # PRICE
-        # ======================================================
-
-        price = product.get(
-            "price",
-            0
-        )
-
-        try:
-
-            price_value = float(
-                price
-            )
-
-        except (
-            ValueError,
-            TypeError
-        ):
-
-            price_value = 0
-
+        price_val = float(product.get("price", 0))
         ctk.CTkLabel(
-            row,
-            text=f"₱{price_value:,.2f}",
-            font=ctk.CTkFont(
-                size=11
-            ),
-            text_color=self.DARK,
-            anchor="center"
-        ).grid(
-            row=0,
-            column=2,
-            sticky="ew",
-            padx=5,
-            pady=8
-        )
+            meta_row,
+            text=f"₱{price_val:,.2f}",
+            font=Theme.font(13, "bold"),
+            text_color=Theme.PRIMARY_DARK,
+            anchor="w"
+        ).pack(side="left")
 
-        # ======================================================
-        # QUANTITY
-        # ======================================================
-
-        quantity = product.get(
-            "quantity",
-            10
-        )
-
+        # Description
+        desc_str = str(product.get("description", ""))
+        if len(desc_str) > 48:
+            desc_str = desc_str[:45] + "..."
         ctk.CTkLabel(
-            row,
-            text=str(quantity),
-            font=ctk.CTkFont(
-                size=11,
-                weight="bold"
-            ),
-            text_color=self.DARK,
-            anchor="center"
-        ).grid(
-            row=0,
-            column=3,
-            sticky="ew",
-            padx=5,
-            pady=8
-        )
+            card_center,
+            text=desc_str,
+            font=Theme.font(11),
+            text_color=Theme.GRAY,
+            anchor="w"
+        ).pack(fill="x", anchor="w")
 
-        # ======================================================
-        # DELETE
-        # ======================================================
-
-        ctk.CTkButton(
-            row,
-            text="Delete",
-            width=70,
-            height=30,
-            corner_radius=7,
-            fg_color=self.RED,
-            hover_color="#B94F53",
-            text_color=self.WHITE,
-            font=ctk.CTkFont(
-                size=10,
-                weight="bold"
-            ),
-            command=lambda i=original_index:
-                self.delete_product(i)
-        ).grid(
-            row=0,
-            column=4,
-            padx=8,
-            pady=5
-        )
-
-        # ======================================================
-        # UPDATE
-        # ======================================================
-
-        ctk.CTkButton(
-            row,
-            text="Update",
-            width=70,
-            height=30,
-            corner_radius=7,
-            fg_color=self.BLUE,
-            hover_color=self.DARK_BLUE,
-            text_color=self.WHITE,
-            font=ctk.CTkFont(
-                size=10,
-                weight="bold"
-            ),
-            command=lambda i=original_index:
-                self.update_product(i)
-        ).grid(
-            row=0,
-            column=5,
-            padx=8,
-            pady=5
-        )
+    def _create_row(self, index: int, product: Any):
+        """Backward-compatible alias for creating an inventory card."""
+        self._create_card(len(self.checkbox_vars), index, product)
 
     # ==========================================================
-    # ADD PRODUCT
+    # HANDLERS
     # ==========================================================
 
-    def add_product(self):
-
-        window = ctk.CTkToplevel(
-            self
-        )
-
-        window.title(
-            "Add Product"
-        )
-
-        window.geometry(
-            "520x760"
-        )
-
-        window.resizable(
-            False,
-            False
-        )
-
-        window.configure(
-            fg_color=self.BG
-        )
-
-        window.transient(
-            self.winfo_toplevel()
-        )
-
-        window.grab_set()
-
-        # ======================================================
-        # TITLE
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="ADD PRODUCT",
-            font=ctk.CTkFont(
-                size=22,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            pady=(25, 20)
-        )
-
-        # ======================================================
-        # NAME
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Product Name:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        name_entry = ctk.CTkEntry(
-            window,
-            height=38
-        )
-
-        name_entry.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 16)
-        )
-
-        # ======================================================
-        # CATEGORY
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Category:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        category_menu = ctk.CTkComboBox(
-            window,
-            height=38,
-            values=[
-                "CPU",
-                "GPU",
-                "RAM",
-                "Storage",
-                "Motherboard",
-                "PSU",
-                "Other"
-            ]
-        )
-
-        category_menu.set(
-            "CPU"
-        )
-
-        category_menu.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 16)
-        )
-
-        # ======================================================
-        # PRICE
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Price:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        price_entry = ctk.CTkEntry(
-            window,
-            height=38
-        )
-
-        price_entry.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 16)
-        )
-
-        # ======================================================
-        # QUANTITY
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Quantity:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        quantity_entry = ctk.CTkEntry(
-            window,
-            height=38
-        )
-
-        quantity_entry.insert(
-            0,
-            "10"
-        )
-
-        quantity_entry.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 16)
-        )
-
-        # ======================================================
-        # PICTURE
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Product Picture:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        picture_frame = ctk.CTkFrame(
-            window,
-            height=110,
-            fg_color=self.WHITE,
-            corner_radius=10,
-            border_width=1,
-            border_color=self.BORDER
-        )
-
-        picture_frame.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 8)
-        )
-
-        picture_frame.pack_propagate(
-            False
-        )
-
-        picture_label = ctk.CTkLabel(
-            picture_frame,
-            text="No picture selected",
-            width=120,
-            height=100,
-            fg_color=self.IMAGE_GRAY,
-            corner_radius=10,
-            text_color=self.GRAY
-        )
-
-        picture_label.pack(
-            expand=True
-        )
-
-        selected_picture = {
-            "path": ""
-        }
-
-        # ======================================================
-        # BROWSE PICTURE
-        # ======================================================
-
-        def browse_picture():
-
-            path = filedialog.askopenfilename(
-                parent=window,
-                title="Select Product Picture",
-                filetypes=[
-                    (
-                        "Image Files",
-                        "*.png *.jpg *.jpeg *.webp"
-                    )
-                ]
-            )
-
-            if not path:
-                return
-
-            selected_picture["path"] = path
-
-            try:
-
-                image = Image.open(
-                    path
-                )
-
-                image.thumbnail(
-                    (120, 100)
-                )
-
-                ctk_image = ctk.CTkImage(
-                    light_image=image,
-                    dark_image=image,
-                    size=image.size
-                )
-
-                picture_label.configure(
-                    image=ctk_image,
-                    text=""
-                )
-
-                picture_label.image = ctk_image
-
-            except Exception as error:
-
-                messagebox.showerror(
-                    "Image Error",
-                    f"Unable to load image.\n\n{error}",
-                    parent=window
-                )
-
-        ctk.CTkButton(
-            window,
-            text="Browse Picture",
-            width=150,
-            height=36,
-            corner_radius=8,
-            fg_color=self.BLUE,
-            hover_color=self.DARK_BLUE,
-            command=browse_picture
-        ).pack(
-            pady=(0, 18)
-        )
-
-        # ======================================================
-        # BUTTON FRAME
-        # ======================================================
-
-        button_frame = ctk.CTkFrame(
-            window,
-            fg_color="transparent"
-        )
-
-        button_frame.pack(
-            fill="x",
-            padx=32,
-            pady=(0, 20)
-        )
-
-        # ======================================================
-        # SAVE PRODUCT
-        # ======================================================
-
-        def save_product():
-
-            name = name_entry.get().strip()
-            category = category_menu.get().strip()
-            price_text = price_entry.get().strip()
-            quantity_text = quantity_entry.get().strip()
-
-            if not name:
-
-                messagebox.showwarning(
-                    "Missing Product",
-                    "Please enter the product name.",
-                    parent=window
-                )
-
-                return
-
-            try:
-
-                price = float(
-                    price_text
-                    .replace(",", "")
-                    .replace("₱", "")
-                )
-
-            except ValueError:
-
-                messagebox.showwarning(
-                    "Invalid Price",
-                    "Please enter a valid price.",
-                    parent=window
-                )
-
-                return
-
-            try:
-
-                quantity = int(
-                    quantity_text
-                )
-
-            except ValueError:
-
-                messagebox.showwarning(
-                    "Invalid Quantity",
-                    "Quantity must be a whole number.",
-                    parent=window
-                )
-
-                return
-
-            if price < 0 or quantity < 0:
-
-                messagebox.showwarning(
-                    "Invalid Value",
-                    "Price and quantity cannot be negative.",
-                    parent=window
-                )
-
-                return
-
-            # ==================================================
-            # SAVE IMAGE INTO frontend/images
-            # ==================================================
-
-            saved_image = self.save_product_image(
-                selected_picture["path"],
-                name
-            )
-
-            # ==================================================
-            # CREATE PRODUCT
-            # ==================================================
-
-            new_product = {
-                "name": name,
-                "category": category,
-                "description": "Computer Part",
-                "price": price,
-                "quantity": quantity,
-                "image": saved_image
-            }
-
-            self.products.append(
-                new_product
-            )
-
-            self.refresh_table()
-
-            # Refresh Dashboard
-
-            if self.refresh_callback:
-
-                try:
-
-                    self.refresh_callback()
-
-                except Exception:
-
-                    pass
-
-            messagebox.showinfo(
-                "Product Added",
-                f"{name} has been added successfully.",
-                parent=window
-            )
-
-            window.destroy()
-
-        # ======================================================
-        # ADD PRODUCT BUTTON
-        # ======================================================
-
-        ctk.CTkButton(
-            button_frame,
-            text="Add Product",
-            height=40,
-            corner_radius=8,
-            fg_color=self.DARK_BLUE,
-            hover_color=self.BLUE,
-            command=save_product
-        ).pack(
-            side="left",
-            fill="x",
-            expand=True,
-            padx=(0, 5)
-        )
-
-        # ======================================================
-        # CANCEL BUTTON
-        # ======================================================
-
-        ctk.CTkButton(
-            button_frame,
-            text="Cancel",
-            height=40,
-            corner_radius=8,
-            fg_color="#E5E7EB",
-            hover_color="#D1D5DB",
-            text_color=self.DARK,
-            command=window.destroy
-        ).pack(
-            side="right",
-            fill="x",
-            expand=True,
-            padx=(5, 0)
-        )
-
-        name_entry.focus()
-
-    # ==========================================================
-    # UPDATE PRODUCT
-    # ==========================================================
-
-    def update_product(self, index):
-
-        if index < 0 or index >= len(self.products):
-            return
-
-        product = self.products[index]
-
-        window = ctk.CTkToplevel(
-            self
-        )
-
-        window.title(
-            "Update Product"
-        )
-
-        window.geometry(
-            "520x760"
-        )
-
-        window.resizable(
-            False,
-            False
-        )
-
-        window.configure(
-            fg_color=self.BG
-        )
-
-        window.transient(
-            self.winfo_toplevel()
-        )
-
-        window.grab_set()
-
-        # ======================================================
-        # TITLE
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="UPDATE PRODUCT",
-            font=ctk.CTkFont(
-                size=22,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            pady=(25, 20)
-        )
-
-        # ======================================================
-        # NAME
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Product Name:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        name_entry = ctk.CTkEntry(
-            window,
-            height=38
-        )
-
-        name_entry.insert(
-            0,
-            product.get(
-                "name",
-                ""
-            )
-        )
-
-        name_entry.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 16)
-        )
-
-        # ======================================================
-        # CATEGORY
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Category:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        category_menu = ctk.CTkComboBox(
-            window,
-            height=38,
-            values=[
-                "CPU",
-                "GPU",
-                "RAM",
-                "Storage",
-                "Motherboard",
-                "PSU",
-                "Other"
-            ]
-        )
-
-        category_menu.set(
-            product.get(
-                "category",
-                "Other"
-            )
-        )
-
-        category_menu.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 16)
-        )
-
-        # ======================================================
-        # PRICE
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Price:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        price_entry = ctk.CTkEntry(
-            window,
-            height=38
-        )
-
-        price_entry.insert(
-            0,
-            str(
-                product.get(
-                    "price",
-                    0
-                )
-            )
-        )
-
-        price_entry.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 16)
-        )
-
-        # ======================================================
-        # QUANTITY
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Quantity:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        quantity_entry = ctk.CTkEntry(
-            window,
-            height=38
-        )
-
-        quantity_entry.insert(
-            0,
-            str(
-                product.get(
-                    "quantity",
-                    10
-                )
-            )
-        )
-
-        quantity_entry.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 16)
-        )
-
-        # ======================================================
-        # PICTURE
-        # ======================================================
-
-        ctk.CTkLabel(
-            window,
-            text="Product Picture:",
-            font=ctk.CTkFont(
-                size=12,
-                weight="bold"
-            ),
-            text_color=self.DARK
-        ).pack(
-            anchor="w",
-            padx=32
-        )
-
-        picture_frame = ctk.CTkFrame(
-            window,
-            height=110,
-            fg_color=self.WHITE,
-            corner_radius=10,
-            border_width=1,
-            border_color=self.BORDER
-        )
-
-        picture_frame.pack(
-            fill="x",
-            padx=32,
-            pady=(6, 8)
-        )
-
-        picture_frame.pack_propagate(
-            False
-        )
-
-        picture_label = ctk.CTkLabel(
-            picture_frame,
-            text="No picture selected",
-            width=120,
-            height=100,
-            fg_color=self.IMAGE_GRAY,
-            corner_radius=10,
-            text_color=self.GRAY
-        )
-
-        picture_label.pack(
-            expand=True
-        )
-
-        selected_picture = {
-            "path": product.get(
-                "image",
-                ""
-            )
-        }
-
-        # ======================================================
-        # SHOW EXISTING PICTURE
-        # ======================================================
-
-        existing_image = selected_picture["path"]
-
-        if (
-            existing_image
-            and os.path.exists(existing_image)
-        ):
-
-            try:
-
-                image = Image.open(
-                    existing_image
-                )
-
-                image.thumbnail(
-                    (120, 100)
-                )
-
-                ctk_image = ctk.CTkImage(
-                    light_image=image,
-                    dark_image=image,
-                    size=image.size
-                )
-
-                picture_label.configure(
-                    image=ctk_image,
-                    text=""
-                )
-
-                picture_label.image = ctk_image
-
-            except Exception:
-
-                pass
-
-        # ======================================================
-        # BROWSE PICTURE
-        # ======================================================
-
-        def browse_picture():
-
-            path = filedialog.askopenfilename(
-                parent=window,
-                title="Select Product Picture",
-                filetypes=[
-                    (
-                        "Image Files",
-                        "*.png *.jpg *.jpeg *.webp"
-                    )
-                ]
-            )
-
-            if not path:
-                return
-
-            selected_picture["path"] = path
-
-            try:
-
-                image = Image.open(
-                    path
-                )
-
-                image.thumbnail(
-                    (120, 100)
-                )
-
-                ctk_image = ctk.CTkImage(
-                    light_image=image,
-                    dark_image=image,
-                    size=image.size
-                )
-
-                picture_label.configure(
-                    image=ctk_image,
-                    text=""
-                )
-
-                picture_label.image = ctk_image
-
-            except Exception as error:
-
-                messagebox.showerror(
-                    "Image Error",
-                    f"Unable to load image.\n\n{error}",
-                    parent=window
-                )
-
-        ctk.CTkButton(
-            window,
-            text="Browse Picture",
-            width=150,
-            height=36,
-            corner_radius=8,
-            fg_color=self.BLUE,
-            hover_color=self.DARK_BLUE,
-            command=browse_picture
-        ).pack(
-            pady=(0, 18)
-        )
-
-        # ======================================================
-        # BUTTON FRAME
-        # ======================================================
-
-        button_frame = ctk.CTkFrame(
-            window,
-            fg_color="transparent"
-        )
-
-        button_frame.pack(
-            fill="x",
-            padx=32,
-            pady=(0, 20)
-        )
-
-        # ======================================================
-        # SAVE UPDATE
-        # ======================================================
-
-        def save_update():
-
-            name = name_entry.get().strip()
-            category = category_menu.get().strip()
-            price_text = price_entry.get().strip()
-            quantity_text = quantity_entry.get().strip()
-
-            if not name:
-
-                messagebox.showwarning(
-                    "Missing Product",
-                    "Please enter the product name.",
-                    parent=window
-                )
-
-                return
-
-            try:
-
-                price = float(
-                    price_text
-                    .replace(",", "")
-                    .replace("₱", "")
-                )
-
-            except ValueError:
-
-                messagebox.showwarning(
-                    "Invalid Price",
-                    "Please enter a valid price.",
-                    parent=window
-                )
-
-                return
-
-            try:
-
-                quantity = int(
-                    quantity_text
-                )
-
-            except ValueError:
-
-                messagebox.showwarning(
-                    "Invalid Quantity",
-                    "Quantity must be a whole number.",
-                    parent=window
-                )
-
-                return
-
-            if price < 0 or quantity < 0:
-
-                messagebox.showwarning(
-                    "Invalid Value",
-                    "Price and quantity cannot be negative.",
-                    parent=window
-                )
-
-                return
-
-            # ==================================================
-            # HANDLE IMAGE UPDATE
-            # ==================================================
-
-            old_image = product.get(
-                "image",
-                ""
-            )
-
-            selected_image = selected_picture["path"]
-
-            # If user selected a new picture
-            if (
-                selected_image
-                and selected_image != old_image
-            ):
-
-                saved_image = self.save_product_image(
-                    selected_image,
-                    name
-                )
-
-                if saved_image:
-
-                    # Delete old copied image
-                    if (
-                        old_image
-                        and old_image != saved_image
-                        and os.path.exists(old_image)
-                    ):
-
-                        try:
-
-                            os.remove(
-                                old_image
-                            )
-
-                        except Exception:
-
-                            pass
-
-                    selected_image = saved_image
-
-                else:
-
-                    # Keep old image if copying failed
-                    selected_image = old_image
-
-            # ==================================================
-            # UPDATE PRODUCT
-            # ==================================================
-
-            product["name"] = name
-            product["category"] = category
-            product["price"] = price
-            product["quantity"] = quantity
-            product["image"] = selected_image
-
-            self.refresh_table()
-
-            # Refresh Dashboard
-
-            if self.refresh_callback:
-
-                try:
-
-                    self.refresh_callback()
-
-                except Exception:
-
-                    pass
-
-            messagebox.showinfo(
-                "Product Updated",
-                f"{name} has been updated successfully.",
-                parent=window
-            )
-
-            window.destroy()
-
-        # ======================================================
-        # UPDATE BUTTON
-        # ======================================================
-
-        ctk.CTkButton(
-            button_frame,
-            text="Update Product",
-            height=40,
-            corner_radius=8,
-            fg_color=self.DARK_BLUE,
-            hover_color=self.BLUE,
-            command=save_update
-        ).pack(
-            side="left",
-            fill="x",
-            expand=True,
-            padx=(0, 5)
-        )
-
-        # ======================================================
-        # CANCEL BUTTON
-        # ======================================================
-
-        ctk.CTkButton(
-            button_frame,
-            text="Cancel",
-            height=40,
-            corner_radius=8,
-            fg_color="#E5E7EB",
-            hover_color="#D1D5DB",
-            text_color=self.DARK,
-            command=window.destroy
-        ).pack(
-            side="right",
-            fill="x",
-            expand=True,
-            padx=(5, 0)
-        )
-
-        name_entry.focus()
-
-    # ==========================================================
-    # DELETE PRODUCT
-    # ==========================================================
-
-    def delete_product(self, index):
-
-        if index < 0 or index >= len(self.products):
-            return
-
-        product = self.products[index]
-
-        answer = messagebox.askyesno(
-            "Delete Product",
-            f"Are you sure you want to delete\n\n"
-            f"{product.get('name', 'this product')}?",
-            parent=self.winfo_toplevel()
-        )
-
-        if not answer:
-            return
-
-        # ======================================================
-        # DELETE IMAGE FILE
-        # ======================================================
-
-        image_path = product.get(
-            "image",
-            ""
-        )
-
-        if image_path:
-
-            try:
-
-                if os.path.exists(image_path):
-
-                    os.remove(
-                        image_path
-                    )
-
-            except Exception:
-
-                pass
-
-        # ======================================================
-        # DELETE PRODUCT
-        # ======================================================
-
-        self.products.pop(
-            index
-        )
-
+    def _on_search(self, event=None):
+        self.search_text = self.search_entry.get()
         self.refresh_table()
 
-        # Refresh Dashboard
+    def _clear_search(self):
+        self.search_entry.delete(0, "end")
+        self.search_text = ""
+        self.refresh_table()
 
+    def _toggle_select_all(self):
+        val = self.select_all_var.get()
+        for v in self.checkbox_vars.values():
+            v.set(val)
+
+    def add_product(self):
+        ProductFormModal(
+            self,
+            mode="add",
+            on_save=self._on_product_added,
+            get_image_path_fn=self.resolve_image_path
+        )
+
+    def _on_product_added(self, prod_data: Dict[str, Any]):
+        prod_data["image"] = self._persist_image_if_needed(prod_data.get("image", ""), prod_data["name"])
+        self.products.append(prod_data)
+        self.refresh_table()
         if self.refresh_callback:
+            self.refresh_callback()
+        messagebox.showinfo("Success", f"Product '{prod_data['name']}' added successfully!", parent=self)
 
-            try:
+    def update_product(self, index: int):
+        if 0 <= index < len(self.products):
+            ProductFormModal(
+                self,
+                mode="edit",
+                product=self.products[index],
+                on_save=lambda p: self._on_product_updated(index, p),
+                get_image_path_fn=self.resolve_image_path
+            )
 
-                self.refresh_callback()
+    def _on_product_updated(self, index: int, prod_data: Dict[str, Any]):
+        prod_data["image"] = self._persist_image_if_needed(prod_data.get("image", ""), prod_data["name"])
+        self.products[index] = prod_data
+        self.refresh_table()
+        if self.refresh_callback:
+            self.refresh_callback()
+        messagebox.showinfo("Success", f"Product '{prod_data['name']}' updated successfully!", parent=self)
 
-            except Exception:
-
-                pass
-
-    # ==========================================================
-    # DELETE SELECTED
-    # ==========================================================
+    def delete_product(self, index: int):
+        if 0 <= index < len(self.products):
+            name = self.products[index].get("name", "this product")
+            confirmed = messagebox.askyesno(
+                "Confirm Deletion",
+                f"Are you sure you want to delete '{name}'?",
+                parent=self
+            )
+            if confirmed:
+                self.products.pop(index)
+                self.refresh_table()
+                if self.refresh_callback:
+                    self.refresh_callback()
 
     def delete_selected(self):
+        selected_indices = [idx for idx, var in self.checkbox_vars.items() if var.get()]
+        if not selected_indices:
+            messagebox.showinfo("None Selected", "No products selected for deletion.", parent=self)
+            return
 
-        messagebox.showinfo(
-            "Delete Product",
-            "Please use the Delete button beside the "
-            "product you want to remove.",
-            parent=self.winfo_toplevel()
+        confirmed = messagebox.askyesno(
+            "Confirm Bulk Deletion",
+            f"Are you sure you want to delete {len(selected_indices)} selected products?",
+            parent=self
         )
+        if confirmed:
+            for idx in sorted(selected_indices, reverse=True):
+                if 0 <= idx < len(self.products):
+                    self.products.pop(idx)
+
+            self.select_all_var.set(False)
+            self.refresh_table()
+            if self.refresh_callback:
+                self.refresh_callback()
+            messagebox.showinfo("Deleted", f"Deleted {len(selected_indices)} products.", parent=self)
